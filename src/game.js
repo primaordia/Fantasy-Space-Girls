@@ -1169,7 +1169,7 @@ function makeHeroJump(options = {}) {
   burst(state.hero.x, state.hero.y + state.hero.h / 2, "#fff1a8", wasGrounded ? 8 : 12);
 }
 
-function moveHeroTowardPointer() {
+function moveHeroTowardPointer({ jumpTowardTarget = false } = {}) {
   if (!state.hero) return;
   const hero = state.hero;
   const targetX = clamp(pointer.worldX, 20 + hero.w / 2, world.width - 20 - hero.w / 2);
@@ -1180,7 +1180,10 @@ function moveHeroTowardPointer() {
   tapMove.x = targetX;
   tapMove.y = targetY;
   hero.facing = direction;
-  announce("Moving to tapped location.");
+  if (jumpTowardTarget && targetY < hero.y - hero.h * 0.25) {
+    makeHeroJump({ allowAir: true, direction });
+  }
+  announce("Moving to clicked location.");
 }
 
 function burst(x, y, color, count) {
@@ -1528,7 +1531,7 @@ function drawHero() {
     ctx.shadowBlur = 22 + hero.specialFlash * 22;
   }
   ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-  drawHeadBubble(drawW, drawH);
+  drawHeadBubble(drawW, drawH, state.selected);
 
   if (hero.specialFlash > 0) {
     ctx.globalAlpha = hero.specialFlash * 0.35;
@@ -1542,9 +1545,11 @@ function drawHero() {
   drawHealthBar(hero);
 }
 
-function drawHeadBubble(drawW, drawH) {
-  const radius = Math.max(18, Math.min(drawW, drawH) * 0.22);
-  const centerY = -drawH * 0.31;
+function drawHeadBubble(drawW, drawH, character) {
+  const bubble = character?.headBubble || {};
+  const radius = Math.max(18, Math.min(drawW, drawH) * (bubble.radius || 0.2));
+  const centerX = drawW * (bubble.x || 0);
+  const centerY = drawH * (bubble.y ?? -0.31);
   ctx.save();
   ctx.fillStyle = "rgba(190, 242, 255, 0.13)";
   ctx.strokeStyle = "rgba(230, 252, 255, 0.72)";
@@ -1552,7 +1557,7 @@ function drawHeadBubble(drawW, drawH) {
   ctx.shadowColor = "rgba(120, 228, 255, 0.55)";
   ctx.shadowBlur = 10;
   ctx.beginPath();
-  ctx.arc(0, centerY, radius, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 
@@ -1560,7 +1565,7 @@ function drawHeadBubble(drawW, drawH) {
   ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(-radius * 0.22, centerY - radius * 0.22, radius * 0.48, Math.PI * 1.08, Math.PI * 1.62);
+  ctx.arc(centerX - radius * 0.22, centerY - radius * 0.22, radius * 0.48, Math.PI * 1.08, Math.PI * 1.62);
   ctx.stroke();
   ctx.restore();
 }
@@ -1811,7 +1816,7 @@ function drawNpc(npc) {
   ctx.shadowColor = npc.claimed ? "#ffd84f" : "#78e4ff";
   ctx.shadowBlur = npc.claimed ? 16 : 10;
   ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-  drawHeadBubble(drawW, drawH);
+  drawHeadBubble(drawW, drawH, npc.character);
   ctx.restore();
 
   const bubbleText = npc.claimed ? "+500!" : npc.line;
@@ -1951,7 +1956,7 @@ canvas.addEventListener("pointerdown", (event) => {
   if (state.paused) return;
   screenToWorld(event);
   if (state.launched) {
-    moveHeroTowardPointer();
+    moveHeroTowardPointer({ jumpTowardTarget: event.pointerType === "mouse" || event.pointerType === "pen" });
     return;
   }
   pointer.active = true;
