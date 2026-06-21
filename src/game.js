@@ -23,7 +23,7 @@ const keys = new Set();
 const held = { left: false, right: false, jump: false, special: false };
 const pointer = { active: false, x: 0, y: 0, worldX: 0, worldY: 0, startX: 0, startY: 0, downAt: 0, pointerType: "" };
 const controlTaps = { left: 0, right: 0 };
-const tapMove = { active: false, x: 0, y: 0 };
+const tapMove = { active: false, x: 0, y: 0, speedScale: 0.42, maxSpeed: 520 };
 const soundState = { ctx: null, enabled: false, lastFireball: 0 };
 
 const NPC_LINES = [
@@ -32,7 +32,17 @@ const NPC_LINES = [
   "OMG I want to go shopping",
   "This is taking forever",
   "Over here!",
-  "You got this!"
+  "You got this!",
+  "Help me!",
+  "Come on what are you waiting for",
+  "I want to go shopping",
+  "When are we going out?",
+  "I am bored!",
+  "This is boring",
+  "What are you doing",
+  "I want to hang out with my girlfriends",
+  "The girls are going to the mall later!",
+  "You never want to go out!"
 ];
 
 const GAME_ASSETS = {
@@ -440,7 +450,9 @@ function createNpcEncounters(placedObjects, minObjectGap) {
         y,
         w,
         h,
+        lineIndex: (index + state.roundSeed) % NPC_LINES.length,
         line: NPC_LINES[(index + state.roundSeed) % NPC_LINES.length],
+        speechTimer: seededRange(7900 + state.roundSeed + index * 31, 0, 5),
         progress: 0,
         claimed: false,
         pulse: seededRange(7600 + index, 0, Math.PI * 2)
@@ -654,6 +666,7 @@ function update(dt) {
     const manualMove = (keys.has("ArrowRight") || keys.has("KeyD") || held.right ? 1 : 0) -
       (keys.has("ArrowLeft") || keys.has("KeyA") || held.left ? 1 : 0);
     let move = manualMove;
+    const isTapMoving = !manualMove && tapMove.active;
     if (!move && tapMove.active) {
       const dx = tapMove.x - hero.x;
       if (Math.abs(dx) > hero.w * 0.35) {
@@ -664,8 +677,11 @@ function update(dt) {
       }
     }
     const control = hero.grounded ? 1 : stats.airControl;
-    hero.vx += move * stats.speed * 5.3 * control * dt;
-    hero.vx = clamp(hero.vx, -900, 1260);
+    const moveScale = isTapMoving ? tapMove.speedScale : 1;
+    hero.vx += move * stats.speed * 5.3 * control * moveScale * dt;
+    const leftSpeedLimit = isTapMoving ? tapMove.maxSpeed : 900;
+    const rightSpeedLimit = isTapMoving ? tapMove.maxSpeed : 1260;
+    hero.vx = clamp(hero.vx, -leftSpeedLimit, rightSpeedLimit);
     if (move) {
       hero.facing = Math.sign(move);
     } else if (Math.abs(hero.vx) > 35) {
@@ -716,6 +732,12 @@ function updateNpcs(hero, dt) {
   for (const npc of state.npcs) {
     npc.pulse += dt * 3;
     if (npc.claimed) continue;
+    npc.speechTimer += dt;
+    if (npc.speechTimer >= 5) {
+      npc.speechTimer = 0;
+      npc.lineIndex = (npc.lineIndex + 1) % NPC_LINES.length;
+      npc.line = NPC_LINES[npc.lineIndex];
+    }
     const nearX = Math.abs(hero.x - npc.x) < Math.max(112, hero.w * 1.25);
     const nearY = Math.abs(hero.y - npc.y) < Math.max(126, hero.h * 1.2);
     if (nearX && nearY) {
@@ -944,7 +966,7 @@ function updateFireballs(dt) {
       f.h
     )) {
       f.alive = false;
-      const damage = getEnemyDamage(36);
+      const damage = getEnemyDamage(24);
       startDamageOverTime(damage, 6, `Fireball burn: ${Math.round(damage)} HP damage over 6 seconds.`);
       burst(f.x, f.y, getFireballColor(f.color), 18);
     }
@@ -1169,7 +1191,7 @@ function makeHeroJump(options = {}) {
   burst(state.hero.x, state.hero.y + state.hero.h / 2, "#fff1a8", wasGrounded ? 8 : 12);
 }
 
-function moveHeroTowardPointer({ jumpTowardTarget = false } = {}) {
+function moveHeroTowardPointer() {
   if (!state.hero) return;
   const hero = state.hero;
   const targetX = clamp(pointer.worldX, 20 + hero.w / 2, world.width - 20 - hero.w / 2);
@@ -1184,9 +1206,6 @@ function moveHeroTowardPointer({ jumpTowardTarget = false } = {}) {
   tapMove.x = targetX;
   tapMove.y = targetY;
   hero.facing = direction;
-  if (jumpTowardTarget && targetY < hero.y - hero.h * 0.25) {
-    makeHeroJump({ allowAir: true, direction });
-  }
   announce("Moving to clicked location.");
 }
 
@@ -1986,7 +2005,7 @@ function releaseLaunch(event) {
   pointer.active = false;
 
   if (state.launched || isQuickMove) {
-    moveHeroTowardPointer({ jumpTowardTarget: true });
+    moveHeroTowardPointer();
     return;
   }
 
@@ -2013,7 +2032,7 @@ function moveFromCanvasClick(event) {
   if (!state.hero || state.gameOver || state.paused || state.won) return;
   if (performance.now() - pointer.downAt > 320) return;
   screenToWorld(event);
-  moveHeroTowardPointer({ jumpTowardTarget: true });
+  moveHeroTowardPointer();
 }
 
 function beginLaunchCharge() {
