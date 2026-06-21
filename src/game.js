@@ -113,7 +113,10 @@ const state = {
   cooldown: 0,
   message: "",
   messageTimer: 0,
-  last: performance.now()
+  last: performance.now(),
+  assetPromise: null,
+  assetsReady: false,
+  loadingMission: false
 };
 
 const world = {
@@ -163,19 +166,43 @@ function resetHeroToStart() {
 
 async function boot() {
   const data = { characters: window.PRIMA_CHARACTERS || [] };
-  await Promise.all(
-    data.characters.map(async (character) => {
-      const image = new Image();
-      image.src = character.asset;
-      await image.decode();
-      state.images.set(character.id, image);
-    })
-  );
-  await loadGameAssets();
   makeCharacterGrid(data.characters);
+  state.assetPromise = Promise.all([preloadCharacterImages(data.characters), loadGameAssets()])
+    .then(() => {
+      state.assetsReady = true;
+    })
+    .catch((error) => {
+      console.error(error);
+      announce("Some game art could not load. Refresh to try again.");
+      throw error;
+    });
   window.addEventListener("resize", resize);
   resize();
   requestAnimationFrame(tick);
+}
+
+async function loadImage(src) {
+  const image = new Image();
+  const loaded = new Promise((resolve, reject) => {
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", reject, { once: true });
+  });
+  image.src = src;
+  if (image.decode) {
+    await image.decode().catch(() => loaded);
+  } else {
+    await loaded;
+  }
+  return image;
+}
+
+async function preloadCharacterImages(characters) {
+  await Promise.all(
+    characters.map(async (character) => {
+      const image = await loadImage(character.asset);
+      state.images.set(character.id, image);
+    })
+  );
 }
 
 async function loadGameAssets() {
@@ -193,9 +220,7 @@ async function loadGameAssets() {
   ];
   await Promise.all(
     entries.map(async ([key, src]) => {
-      const image = new Image();
-      image.src = src;
-      await image.decode();
+      const image = await loadImage(src);
       state.images.set(key, image);
     })
   );
@@ -208,7 +233,7 @@ function makeCharacterGrid(characters) {
     button.className = "character-card";
     button.type = "button";
     button.innerHTML = `
-      <img alt="" src="${character.asset}" />
+      <img alt="" src="${character.asset}" loading="eager" decoding="async" fetchpriority="high" />
       <span>
         <strong>${character.name}</strong>
         <span>${character.title}</span>
@@ -219,53 +244,63 @@ function makeCharacterGrid(characters) {
   }
 }
 
-function chooseCharacter(character) {
-  state.selected = character;
-  state.launched = false;
-  state.aiming = false;
-  state.chargeStartedAt = 0;
-  state.chargePower = 0;
-  state.score = 0;
-  state.level = 1;
-  state.roundSeed = Math.floor(Math.random() * 100000);
-  state.advancingLevel = false;
-  state.timeLeft = 120;
-  state.won = false;
-  state.gameOver = false;
-  state.paused = false;
-  state.cooldown = 0;
-  state.cameraX = 0;
-  state.particles = [];
-  state.hero = {
-    x: world.slingX,
-    y: world.slingY,
-    vx: 0,
-    vy: 0,
-    w: character.physics.width,
-    h: character.physics.height,
-    hp: 100,
-    maxHp: 100,
-    healingOverTime: 0,
-    healingTimeLeft: 0,
-    healingPerSecond: 0,
-    damageOverTime: 0,
-    damageTimeLeft: 0,
-    damagePerSecond: 0,
-    damageCooldown: 0,
-    shieldTimer: 0,
-    grounded: false,
-    facing: 1,
-    animTime: Math.random() * Math.PI * 2,
-    landingBounce: 0,
-    jumpStretch: 0,
-    tapJumpCooldown: 0,
-    specialFlash: 0
-  };
-  resetHeroToStart();
-  buildLevel(true);
-  announce("Hold Right to charge and release, or double tap Right to launch.");
-  updateHud();
-  select.classList.add("is-hidden");
+async function chooseCharacter(character) {
+  if (state.loadingMission) return;
+  state.loadingMission = true;
+  try {
+    if (!state.assetsReady) {
+      announce("Loading mission art...");
+      await state.assetPromise;
+    }
+    state.selected = character;
+    state.launched = false;
+    state.aiming = false;
+    state.chargeStartedAt = 0;
+    state.chargePower = 0;
+    state.score = 0;
+    state.level = 1;
+    state.roundSeed = Math.floor(Math.random() * 100000);
+    state.advancingLevel = false;
+    state.timeLeft = 120;
+    state.won = false;
+    state.gameOver = false;
+    state.paused = false;
+    state.cooldown = 0;
+    state.cameraX = 0;
+    state.particles = [];
+    state.hero = {
+      x: world.slingX,
+      y: world.slingY,
+      vx: 0,
+      vy: 0,
+      w: character.physics.width,
+      h: character.physics.height,
+      hp: 100,
+      maxHp: 100,
+      healingOverTime: 0,
+      healingTimeLeft: 0,
+      healingPerSecond: 0,
+      damageOverTime: 0,
+      damageTimeLeft: 0,
+      damagePerSecond: 0,
+      damageCooldown: 0,
+      shieldTimer: 0,
+      grounded: false,
+      facing: 1,
+      animTime: Math.random() * Math.PI * 2,
+      landingBounce: 0,
+      jumpStretch: 0,
+      tapJumpCooldown: 0,
+      specialFlash: 0
+    };
+    resetHeroToStart();
+    buildLevel(true);
+    announce("Hold Right to charge and release, or double tap Right to launch.");
+    updateHud();
+    select.classList.add("is-hidden");
+  } finally {
+    state.loadingMission = false;
+  }
 }
 
 function buildLevel(force = false) {
