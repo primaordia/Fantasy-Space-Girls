@@ -21,7 +21,7 @@ const mainMenuBtn = document.querySelector("#mainMenuBtn");
 
 const keys = new Set();
 const held = { left: false, right: false, jump: false, special: false };
-const pointer = { active: false, x: 0, y: 0, worldX: 0, worldY: 0 };
+const pointer = { active: false, x: 0, y: 0, worldX: 0, worldY: 0, startX: 0, startY: 0, downAt: 0, pointerType: "" };
 const controlTaps = { left: 0, right: 0 };
 const tapMove = { active: false, x: 0, y: 0 };
 const soundState = { ctx: null, enabled: false, lastFireball: 0 };
@@ -1176,6 +1176,10 @@ function moveHeroTowardPointer({ jumpTowardTarget = false } = {}) {
   const targetY = clamp(pointer.worldY, getHeroCeilingY(hero), world.groundY);
   const direction = targetX >= hero.x ? 1 : -1;
 
+  state.launched = true;
+  state.aiming = false;
+  state.chargeStartedAt = 0;
+  state.chargePower = 0;
   tapMove.active = true;
   tapMove.x = targetX;
   tapMove.y = targetY;
@@ -1955,12 +1959,12 @@ canvas.addEventListener("pointerdown", (event) => {
   }
   if (state.paused) return;
   screenToWorld(event);
-  if (state.launched) {
-    moveHeroTowardPointer({ jumpTowardTarget: event.pointerType === "mouse" || event.pointerType === "pen" });
-    return;
-  }
   pointer.active = true;
-  beginLaunchCharge();
+  pointer.startX = pointer.x;
+  pointer.startY = pointer.y;
+  pointer.downAt = performance.now();
+  pointer.pointerType = event.pointerType;
+  if (!state.launched) beginLaunchCharge();
   canvas.setPointerCapture(event.pointerId);
 });
 
@@ -1970,19 +1974,46 @@ canvas.addEventListener("pointermove", (event) => {
 });
 
 canvas.addEventListener("pointerup", releaseLaunch);
-canvas.addEventListener("pointercancel", releaseLaunch);
+canvas.addEventListener("pointercancel", cancelPointer);
+canvas.addEventListener("click", moveFromCanvasClick);
 
-function releaseLaunch() {
-  if (!state.hero || !state.aiming) return;
+function releaseLaunch(event) {
+  if (!state.hero || !pointer.active) return;
+  if (event) screenToWorld(event);
+  const pressMs = performance.now() - pointer.downAt;
+  const dragDistance = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
+  const isQuickMove = pressMs < 260 && dragDistance < 18;
   pointer.active = false;
-  state.aiming = false;
+
+  if (state.launched || isQuickMove) {
+    moveHeroTowardPointer({ jumpTowardTarget: true });
+    return;
+  }
+
+  if (!state.aiming) return;
   const charge = getChargeRatio();
+  state.aiming = false;
   if (charge < 0.08) {
     state.chargeStartedAt = 0;
     state.chargePower = 0;
     return;
   }
   launchHero(charge);
+}
+
+function cancelPointer() {
+  pointer.active = false;
+  if (!state.aiming) return;
+  state.aiming = false;
+  state.chargeStartedAt = 0;
+  state.chargePower = 0;
+}
+
+function moveFromCanvasClick(event) {
+  if (!state.hero || state.gameOver || state.paused || state.won) return;
+  if (performance.now() - pointer.downAt > 320) return;
+  screenToWorld(event);
+  moveHeroTowardPointer({ jumpTowardTarget: true });
 }
 
 function beginLaunchCharge() {

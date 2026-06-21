@@ -457,33 +457,67 @@ h1 {
 
 @media (max-width: 640px) {
   .hud {
-    left: max(10px, env(safe-area-inset-left));
-    right: max(10px, env(safe-area-inset-right));
-    justify-content: flex-start;
-    padding-right: 62px;
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: auto;
+    width: min(250px, calc(100vw - 88px));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    justify-content: start;
+    gap: 5px;
+  }
+
+  .hud > div {
+    padding: 6px 5px;
+    min-height: 52px;
+  }
+
+  .hud span {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .hud small {
+    font-size: 0.68rem;
+    line-height: 1.1;
   }
 
   .hud__score,
-  .hud__level {
-    min-width: 58px;
+  .hud__level,
+  .hud__timer {
+    min-width: 0;
     transform: none;
+    text-align: center;
   }
 
   .hud__timer {
     position: static;
-    min-width: 62px;
   }
 
   .hud__hero {
-    max-width: min(148px, 31vw);
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: none;
+    min-height: 0;
+    padding: 5px 8px;
   }
 
   .hud__hero span {
-    font-size: 0.86rem;
+    overflow: hidden;
+    font-size: 0.78rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .hud__hero small {
-    font-size: 0.64rem;
+    overflow: hidden;
+    font-size: 0.66rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
